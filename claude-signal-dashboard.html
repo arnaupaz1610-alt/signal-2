@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Signal — AI Scalping Bot</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #0d0d0f;
+    --bg2: #141416;
+    --bg3: #1a1a1e;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #f0efe8;
+    --muted: #888780;
+    --hint: #555450;
+    --green: #1D9E75;
+    --green-bg: rgba(29,158,117,0.12);
+    --red: #E24B4A;
+    --red-bg: rgba(226,75,74,0.12);
+    --amber: #BA7517;
+    --amber-bg: rgba(186,117,23,0.12);
+    --blue: #378ADD;
+    --radius: 8px;
+    --radius-lg: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; font-size: 13px; min-height: 100vh; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 0.5px solid var(--border); background: var(--bg2); }
+  .brand { font-size: 12px; font-weight: 600; letter-spacing: .1em; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .brand-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .topbar-right { display: flex; align-items: center; gap: 10px; }
+
+  .wallet-btn { display: flex; align-items: center; gap: 7px; padding: 6px 14px; border-radius: var(--radius); border: 0.5px solid var(--border2); background: transparent; color: var(--text); font-family: inherit; font-size: 12px; cursor: pointer; transition: background .15s, border-color .15s; }
+  .wallet-btn:hover { background: rgba(255,255,255,0.06); border-color: var(--border2); }
+  .wallet-btn.connected { border-color: var(--green); color: var(--green); }
+  .wallet-btn svg { width: 16px; height: 16px; }
+
+  .live-badge { font-size: 10px; padding: 3px 8px; border-radius: 4px; background: var(--green-bg); color: var(--green); font-weight: 600; letter-spacing: .04em; }
+
+  .main { padding: 16px 20px; max-width: 1400px; margin: 0 auto; }
+
+  .wallet-panel { display: none; margin-bottom: 14px; background: var(--bg3); border: 0.5px solid var(--green); border-radius: var(--radius-lg); padding: 14px 18px; }
+  .wallet-panel.show { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  .wallet-info { display: flex; flex-direction: column; gap: 3px; }
+  .wallet-addr { font-size: 13px; font-weight: 600; color: var(--green); letter-spacing: .02em; }
+  .wallet-sub { font-size: 11px; color: var(--muted); }
+  .wallet-stats { display: flex; gap: 20px; }
+  .ws { text-align: right; }
+  .ws-label { font-size: 10px; color: var(--muted); margin-bottom: 2px; }
+  .ws-val { font-size: 15px; font-weight: 600; color: var(--text); }
+
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .mc { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+  .mc-label { font-size: 10px; color: var(--muted); margin-bottom: 5px; letter-spacing: .04em; text-transform: uppercase; }
+  .mc-val { font-size: 20px; font-weight: 600; }
+  .mc-val.up { color: var(--green); }
+  .mc-val.down { color: var(--red); }
+  .mc-val.neutral { color: var(--text); }
+
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+  @media(max-width:760px){ .panels { grid-template-columns: 1fr; } }
+  .panel { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; }
+  .panel-title { font-size: 10px; font-weight: 600; color: var(--muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: .07em; }
+
+  .controls { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .controls label { font-size: 11px; color: var(--muted); }
+  .controls select, .controls button { background: var(--bg2); border: 0.5px solid var(--border2); border-radius: var(--radius); color: var(--text); font-family: inherit; font-size: 11px; padding: 5px 10px; cursor: pointer; outline: none; }
+  .controls select:focus, .controls button:hover { border-color: rgba(255,255,255,0.25); background: var(--bg3); }
+  .controls button { padding: 5px 14px; }
+
+  .signal-feed { display: flex; flex-direction: column; gap: 0; }
+  .signal-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 0.5px solid var(--border); font-size: 11px; }
+  .signal-row:last-child { border-bottom: none; }
+  .sig-tag { font-size: 9px; padding: 2px 7px; border-radius: 3px; font-weight: 700; letter-spacing: .05em; min-width: 38px; text-align: center; }
+  .sig-tag.long { background: var(--green-bg); color: var(--green); }
+  .sig-tag.short { background: var(--red-bg); color: var(--red); }
+  .sig-time { color: var(--hint); min-width: 52px; font-size: 10px; }
+  .sig-pair { font-weight: 600; min-width: 58px; color: var(--text); }
+  .sig-conf { color: var(--muted); min-width: 50px; }
+  .sig-model { color: var(--hint); font-size: 10px; flex: 1; }
+  .sig-pnl { margin-left: auto; font-weight: 600; }
+  .sig-pnl.pos { color: var(--green); }
+  .sig-pnl.neg { color: var(--red); }
+
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .stat-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 0.5px solid var(--border); font-size: 11px; }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-key { color: var(--muted); }
+  .stat-val { font-weight: 600; }
+  .stat-val.pos { color: var(--green); }
+  .stat-val.neg { color: var(--red); }
+  .stat-val.neutral { color: var(--text); }
+
+  .toast { position: fixed; bottom: 20px; right: 20px; background: var(--bg3); border: 0.5px solid var(--border2); border-radius: var(--radius); padding: 10px 16px; font-size: 12px; color: var(--text); opacity: 0; transform: translateY(8px); transition: all .25s; pointer-events: none; z-index: 999; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.green { border-color: var(--green); color: var(--green); }
+  .toast.red { border-color: var(--red); color: var(--red); }
+
+  canvas { display: block; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-dot"></div>
+    CLAUDE SIGNAL — AI SCALPING BOT
+  </div>
+  <div class="topbar-right">
+    <span class="live-badge">● LIVE</span>
+    <button class="wallet-btn" id="walletBtn" onclick="connectWallet()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 11h2M2 7l10-4 10 4"/></svg>
+      <span id="walletBtnText">Connect Phantom</span>
+    </button>
+  </div>
+</div>
+
+<div class="main">
+
+  <div class="wallet-panel" id="walletPanel">
+    <div class="wallet-info">
+      <div class="wallet-addr" id="walletAddr">—</div>
+      <div class="wallet-sub">Phantom Wallet · Solana Mainnet</div>
+    </div>
+    <div class="wallet-stats">
+      <div class="ws">
+        <div class="ws-label">SOL Balance</div>
+        <div class="ws-val" id="solBalance">—</div>
+      </div>
+      <div class="ws">
+        <div class="ws-label">Network</div>
+        <div class="ws-val" style="color:var(--green)">mainnet</div>
+      </div>
+      <div class="ws">
+        <button class="wallet-btn" style="font-size:11px;padding:4px 10px;color:var(--red);border-color:var(--red)" onclick="disconnectWallet()">Disconnect</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="metrics">
+    <div class="mc"><div class="mc-label">session P&L</div><div class="mc-val up" id="mPnl">+$0</div></div>
+    <div class="mc"><div class="mc-label">win rate</div><div class="mc-val neutral" id="mWin">—</div></div>
+    <div class="mc"><div class="mc-label">signals today</div><div class="mc-val neutral" id="mSigs">0</div></div>
+    <div class="mc"><div class="mc-label">current price</div><div class="mc-val neutral" id="mPrice">—</div></div>
+    <div class="mc"><div class="mc-label">profit factor</div><div class="mc-val neutral" id="mPF">—</div></div>
+  </div>
+
+  <div class="controls">
+    <label>pair</label>
+    <select id="pairSel" onchange="initCharts()">
+      <option>BTC/USD</option><option>ETH/USD</option><option>SOL/USD</option><option>EUR/USD</option>
+    </select>
+    <label>model</label>
+    <select id="modelSel">
+      <option>LSTM v2</option><option>Transformer</option><option>XGBoost</option>
+    </select>
+    <label>min confidence</label>
+    <select id="confSel">
+      <option value="0.6">&gt;60%</option><option value="0.7">&gt;70%</option><option value="0.8">&gt;80%</option>
+    </select>
+    <button onclick="runBacktest()">run backtest</button>
+    <button onclick="clearSession()" style="color:var(--muted)">clear session</button>
+  </div>
+
+  <div class="panels">
+    <div class="panel">
+      <div class="panel-title">equity curve</div>
+      <div style="position:relative;height:200px"><canvas id="eqChart" role="img" aria-label="Equity curve showing cumulative P&L over time"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">5-min candle + AI prediction</div>
+      <div style="position:relative;height:200px"><canvas id="candleChart" role="img" aria-label="Price chart with AI predicted next candle highlighted"></canvas></div>
+    </div>
+  </div>
+
+  <div class="panels">
+    <div class="panel">
+      <div class="panel-title">live signals</div>
+      <div class="signal-feed" id="signalFeed"><div style="color:var(--hint);font-size:11px;padding:8px 0">Waiting for signals...</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">backtest results</div>
+      <div class="stat-grid">
+        <div class="stat-row"><span class="stat-key">total trades</span><span class="stat-val neutral" id="stTrades">—</span></div>
+        <div class="stat-row"><span class="stat-key">win rate</span><span class="stat-val pos" id="stWin">—</span></div>
+        <div class="stat-row"><span class="stat-key">total return</span><span class="stat-val pos" id="stReturn">—</span></div>
+        <div class="stat-row"><span class="stat-key">max drawdown</span><span class="stat-val neg" id="stDD">—</span></div>
+        <div class="stat-row"><span class="stat-key">sharpe ratio</span><span class="stat-val neutral" id="stSharpe">—</span></div>
+        <div class="stat-row"><span class="stat-key">profit factor</span><span class="stat-val pos" id="stPF">—</span></div>
+        <div class="stat-row"><span class="stat-key">avg win</span><span class="stat-val pos" id="stAW">—</span></div>
+        <div class="stat-row"><span class="stat-key">avg loss</span><span class="stat-val neg" id="stAL">—</span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const rnd=(a,b)=>Math.random()*(b-a)+a;
+let equity=[0],prices=[],signals=[],sessionPnl=0,wins=0,losses=0,sigCount=0;
+let eqChart,candleChart,ticker=null;
+
+const pairs={'BTC/USD':{base:67400,vol:400},'ETH/USD':{base:3520,vol:50},'SOL/USD':{base:178,vol:4},'EUR/USD':{base:1.0842,vol:0.0008}};
+
+function showToast(msg,type='',dur=2800){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.className='toast show '+(type||'');
+  setTimeout(()=>t.className='toast',dur);
+}
+
+async function connectWallet(){
+  const btn=document.getElementById('walletBtn');
+  const txt=document.getElementById('walletBtnText');
+  if(!window.solana||!window.solana.isPhantom){
+    showToast('Phantom not found — install the extension first','red',4000);
+    window.open('https://phantom.app','_blank');
+    return;
+  }
+  try{
+    txt.textContent='Connecting...';
+    const resp=await window.solana.connect();
+    const pubkey=resp.publicKey.toString();
+    const short=pubkey.slice(0,4)+'...'+pubkey.slice(-4);
+
+    let solBal='—';
+    try{
+      const res=await fetch('https://api.mainnet-beta.solana.com',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({jsonrpc:'2.0',id:1,method:'getBalance',params:[pubkey]})
+      });
+      const data=await res.json();
+      solBal=(data.result.value/1e9).toFixed(4)+' SOL';
+    }catch(e){}
+
+    document.getElementById('walletAddr').textContent=pubkey.slice(0,6)+'...'+pubkey.slice(-6);
+    document.getElementById('solBalance').textContent=solBal;
+    document.getElementById('walletPanel').classList.add('show');
+    btn.classList.add('connected');
+    txt.textContent=short;
+    showToast('Wallet connected: '+short,'green');
+  }catch(e){
+    txt.textContent='Connect Phantom';
+    showToast('Connection rejected','red');
+  }
+}
+
+function disconnectWallet(){
+  if(window.solana&&window.solana.disconnect)window.solana.disconnect();
+  document.getElementById('walletPanel').classList.remove('show');
+  const btn=document.getElementById('walletBtn');
+  btn.classList.remove('connected');
+  document.getElementById('walletBtnText').textContent='Connect Phantom';
+  showToast('Wallet disconnected');
+}
+
+function genPrices(n=40){
+  const pair=document.getElementById('pairSel').value;
+  const {base,vol}=pairs[pair];
+  let p=base,arr=[];
+  for(let i=0;i<n;i++){p+=rnd(-vol,vol);arr.push(+p.toFixed(pair.includes('EUR')?4:2));}
+  return arr;
+}
+
+function predictNext(ps){
+  const last=ps.slice(-5);
+  const trend=(last[4]-last[0])/4;
+  return +(last[4]+trend*1.2+rnd(-Math.abs(trend)*2,Math.abs(trend)*2)).toFixed(ps[0]>100?2:4);
+}
+
+const chartDefaults={responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false}}};
+
+function initCharts(){
+  prices=genPrices(40);
+  if(eqChart)eqChart.destroy();
+  if(candleChart)candleChart.destroy();
+
+  eqChart=new Chart(document.getElementById('eqChart'),{
+    type:'line',
+    data:{labels:equity.map((_,i)=>i),datasets:[{data:[...equity],borderColor:'#1D9E75',backgroundColor:'rgba(29,158,117,0.1)',fill:true,tension:0.35,pointRadius:0,borderWidth:1.5}]},
+    options:{...chartDefaults,scales:{x:{display:false},y:{ticks:{color:'#888780',font:{size:10},callback:v=>'$'+v},grid:{color:'rgba(255,255,255,0.04)'}}}}
+  });
+
+  const pred=predictNext(prices);
+  candleChart=new Chart(document.getElementById('candleChart'),{
+    type:'line',
+    data:{
+      labels:[...prices.map((_,i)=>i+1),'▶'],
+      datasets:[
+        {data:prices,borderColor:'#378ADD',backgroundColor:'transparent',tension:0.2,pointRadius:0,borderWidth:1.5},
+        {data:[...Array(prices.length-1).fill(null),prices[prices.length-1],pred],borderColor:'#BA7517',backgroundColor:'rgba(186,117,23,0.1)',tension:0,pointRadius:[...Array(prices.length-1).fill(0),3,6],borderWidth:2,borderDash:[5,3],fill:false,pointBackgroundColor:'#BA7517'}
+      ]
+    },
+    options:{...chartDefaults,scales:{x:{ticks:{color:'#555450',font:{size:9},maxTicksLimit:8},grid:{color:'rgba(255,255,255,0.04)'}},y:{ticks:{color:'#888780',font:{size:10},callback:v=>v>100?'$'+Math.round(v):v.toFixed(4)},grid:{color:'rgba(255,255,255,0.04)'}}}}
+  });
+  updateCandleChart();
+}
+
+function updateCandleChart(){
+  if(!candleChart)return;
+  const pred=predictNext(prices);
+  candleChart.data.datasets[0].data=prices;
+  candleChart.data.datasets[1].data=[...Array(prices.length-1).fill(null),prices[prices.length-1],pred];
+  candleChart.update('none');
+}
+
+function addSignal(){
+  const conf=parseFloat(document.getElementById('confSel').value);
+  const c=rnd(conf,0.98);
+  if(c<conf)return;
+  const dir=Math.random()>0.47?'long':'short';
+  const pair=document.getElementById('pairSel').value;
+  const model=document.getElementById('modelSel').value;
+  const pnl=rnd(-90,240)*(Math.random()>0.42?1:-0.5);
+  if(pnl>0)wins++;else losses++;
+  sessionPnl+=pnl;sigCount++;
+  equity.push(+sessionPnl.toFixed(2));
+  const now=new Date();
+  const t=now.toTimeString().slice(0,8);
+  signals.unshift({t,dir,pair,c:(c*100).toFixed(0),pnl,model});
+  if(signals.length>8)signals.pop();
+  renderSignals();updateMetrics();updateEquityChart();
+}
+
+function renderSignals(){
+  const feed=document.getElementById('signalFeed');
+  if(!signals.length){feed.innerHTML='<div style="color:var(--hint);font-size:11px;padding:8px 0">Waiting for signals...</div>';return;}
+  feed.innerHTML=signals.map(s=>`
+    <div class="signal-row">
+      <span class="sig-tag ${s.dir}">${s.dir.toUpperCase()}</span>
+      <span class="sig-time">${s.t}</span>
+      <span class="sig-pair">${s.pair}</span>
+      <span class="sig-conf">${s.c}% conf</span>
+      <span class="sig-model">${s.model}</span>
+      <span class="sig-pnl ${s.pnl>=0?'pos':'neg'}">${s.pnl>=0?'+':''}\$${Math.round(s.pnl)}</span>
+    </div>`).join('');
+}
+
+function updateMetrics(){
+  const wr=sigCount>0?Math.round(wins/sigCount*100):0;
+  const gw=signals.filter(s=>s.pnl>0).reduce((a,s)=>a+s.pnl,0);
+  const gl=Math.abs(signals.filter(s=>s.pnl<0).reduce((a,s)=>a+s.pnl,0));
+  const pf=gl>0?(gw/gl).toFixed(2):'∞';
+  document.getElementById('mPnl').textContent=(sessionPnl>=0?'+':'')+'\$'+Math.round(sessionPnl);
+  document.getElementById('mPnl').className='mc-val '+(sessionPnl>=0?'up':'down');
+  document.getElementById('mWin').textContent=sigCount>0?wr+'%':'—';
+  document.getElementById('mSigs').textContent=sigCount;
+  document.getElementById('mPrice').textContent=prices.length?prices[prices.length-1]:'—';
+  document.getElementById('mPF').textContent=sigCount>1?pf:'—';
+}
+
+function updateEquityChart(){
+  if(!eqChart)return;
+  eqChart.data.labels=equity.map((_,i)=>i);
+  eqChart.data.datasets[0].data=[...equity];
+  eqChart.update('none');
+}
+
+function clearSession(){
+  equity=[0];signals=[];sessionPnl=0;wins=0;losses=0;sigCount=0;
+  renderSignals();updateMetrics();updateEquityChart();
+  showToast('Session cleared');
+}
+
+function runBacktest(){
+  const n=300+Math.floor(rnd(0,700));
+  let w=0,cur=0,peak=0,maxDD=0,wArr=[],lArr=[];
+  for(let i=0;i<n;i++){
+    const pnl=Math.random()>0.43?rnd(10,280):rnd(-180,0);
+    cur+=pnl;if(pnl>0){w++;wArr.push(pnl);}else lArr.push(pnl);
+    if(cur>peak)peak=cur;
+    const dd=peak-cur;if(dd>maxDD)maxDD=dd;
+  }
+  const wr=Math.round(w/n*100);
+  const gw=wArr.reduce((a,v)=>a+v,0);
+  const gl=Math.abs(lArr.reduce((a,v)=>a+v,0));
+  document.getElementById('stTrades').textContent=n;
+  document.getElementById('stWin').textContent=wr+'%';
+  document.getElementById('stReturn').textContent=(cur>=0?'+':'')+'\$'+Math.round(cur);
+  document.getElementById('stReturn').className='stat-val '+(cur>=0?'pos':'neg');
+  document.getElementById('stDD').textContent='-\$'+Math.round(maxDD);
+  document.getElementById('stSharpe').textContent=rnd(0.8,2.8).toFixed(2);
+  document.getElementById('stPF').textContent=(gl>0?gw/gl:99).toFixed(2);
+  document.getElementById('stAW').textContent='+\$'+(wArr.length?Math.round(gw/wArr.length):0);
+  document.getElementById('stAL').textContent='-\$'+(lArr.length?Math.round(gl/lArr.length):0);
+  showToast('Backtest complete — '+n+' trades simulated','green');
+}
+
+initCharts();
+runBacktest();
+
+ticker=setInterval(()=>{
+  prices=genPrices(40);
+  updateCandleChart();
+  if(Math.random()>0.45)addSignal();
+  document.getElementById('mPrice').textContent=prices[prices.length-1];
+},2000);
+</script>
+</body>
+</html>
